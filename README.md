@@ -10,7 +10,7 @@ Saving through the iOS share sheet into OneDrive never overwrites a file; the On
 
 ## Features
 
-- Sign in with a Microsoft account and browse or search OneDrive folders
+- Sign in with a Microsoft account and browse or search OneDrive folders, sorted by name or newest first
 - Save asks before replacing, and warns if the file changed elsewhere since it was opened
 - Renaming in the title box saves a new file in the same folder (asks if that name is taken)
 - Keeps the file's line endings and byte-order mark as they were

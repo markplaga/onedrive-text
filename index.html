@@ -204,7 +204,8 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
     <button class="btn" id="backToDoc" hidden>Back to file</button>
   </div>
   <form class="searchrow pad-x" id="searchForm" role="search">
-    <input id="searchIn" type="search" placeholder="Search OneDrive" aria-label="Search OneDrive" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <input id="searchIn" type="search" placeholder="Search" aria-label="Search OneDrive" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <button class="btn" type="button" id="sortBtn" aria-label="Change sort order">Name ↓</button>
     <button class="btn" type="button" id="newFileBtn">New file</button>
   </form>
   <div id="list" role="list"></div>
@@ -393,10 +394,23 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
     if (retry) { const b = document.createElement('button'); b.className='btn'; b.textContent='Try again'; b.onclick = retry; m.appendChild(document.createElement('br')); m.appendChild(b); }
     l.appendChild(m);
   }
+  let lastItems = [], lastWithPath = false;
+  function sortItems(items){
+    const byName = (a,b) => a.name.localeCompare(b.name, undefined, { numeric:true, sensitivity:'base' });
+    const time = it => Date.parse(it.lastModifiedDateTime) || 0;
+    if (prefs.sort === 'recent') items.sort((a,b) => (time(b) - time(a)) || byName(a,b));
+    else items.sort((a,b) => (!!b.folder - !!a.folder) || byName(a,b));
+  }
+  function updateSortBtn(){
+    const b = $('sortBtn');
+    b.textContent = prefs.sort === 'recent' ? 'Recent ↓' : 'Name ↓';
+    b.title = prefs.sort === 'recent' ? 'Sorted newest first. Tap to sort by name.' : 'Sorted by name. Tap to sort newest first.';
+  }
   function renderItems(items, withPath){
+    lastItems = items; lastWithPath = withPath;
     const l = $('list'); l.innerHTML = '';
     if (!items.length) { listMsg(searching ? 'No matches.' : 'This folder is empty. Tap New file to start one here.'); return; }
-    items.sort((a,b) => (!!b.folder - !!a.folder) || a.name.localeCompare(b.name, undefined, { numeric:true, sensitivity:'base' }));
+    sortItems(items);
     const frag = document.createDocumentFragment();
     items.forEach(it => {
       const row = document.createElement('button'); row.className = 'row pad-x'; row.setAttribute('role','listitem');
@@ -591,7 +605,7 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
   $('saveBtn').onclick = save;
 
   /* ===== Preferences ===== */
-  const prefs = Object.assign({ fs:17, serif:false, wrap:true }, load(K.prefs) || {});
+  const prefs = Object.assign({ fs:17, serif:false, wrap:true, sort:'name' }, load(K.prefs) || {});
   function applyPrefs(){
     document.documentElement.style.setProperty('--fs', prefs.fs + 'px');
     document.body.classList.toggle('serif', prefs.serif);
@@ -605,6 +619,11 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
   $('bigger').onclick  = () => { prefs.fs = Math.min(30, prefs.fs + 1); applyPrefs(); };
   $('fontBtn').onclick = () => { prefs.serif = !prefs.serif; applyPrefs(); };
   $('wrapBtn').onclick = () => { prefs.wrap = !prefs.wrap; applyPrefs(); };
+  updateSortBtn();
+  $('sortBtn').onclick = () => {
+    prefs.sort = prefs.sort === 'recent' ? 'name' : 'recent'; store(K.prefs, prefs); updateSortBtn();
+    if (lastItems.length && $('list').querySelector('.row')) { renderItems(lastItems, lastWithPath); $('list').scrollTop = 0; }
+  };
 
   /* ===== Find & replace ===== */
   let matches = [], mIdx = -1;
