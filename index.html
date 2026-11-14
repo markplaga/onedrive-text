@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="OneDrive Text">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#E9EEF2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131A20" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
+<title>OneDrive Text</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E9EEF2; --surface:#FFFFFF; --ink:#1C2B3A; --muted:#5E6E7D;
+  --line:#CDD6DE; --accent:#2E6A8A; --accent-ink:#FFFFFF; --warn:#A5541B; --danger:#A33A2B;
+  --ui:"Atkinson Hyperlegible", -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --serif:"Source Serif 4", Georgia, "Times New Roman", serif;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#131A20; --surface:#1A232B; --ink:#DCE5EC; --muted:#8C9CAA;
+    --line:#2C3943; --accent:#72B4D4; --accent-ink:#0E1A22; --warn:#E0965E; --danger:#E07B6B;
+    color-scheme: dark;
+  }
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%}
+body{
+  height:100%;margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--ui);font-size:16px;line-height:1.45;
+  display:flex;flex-direction:column;overflow:hidden;
+  -webkit-text-size-adjust:100%;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent)}
+.pad-x{padding-left:max(14px, env(safe-area-inset-left,0px));padding-right:max(14px, env(safe-area-inset-right,0px))}
+
+.btn{
+  border:1px solid var(--line);background:var(--surface);border-radius:10px;
+  padding:9px 14px;min-height:42px;cursor:pointer;white-space:nowrap;
+}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn.danger{background:var(--danger);color:#fff;border-color:var(--danger);font-weight:700}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.45;cursor:default}
+.tool{border:0;background:transparent;padding:8px 10px;border-radius:8px;min-height:38px;cursor:pointer;color:var(--ink)}
+.tool:hover,.tool[aria-pressed="true"]{background:var(--surface)}
+
+/* views */
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+body[data-view="setup"] #setup,
+body[data-view="signin"] #signin,
+body[data-view="browse"] #browse,
+body[data-view="edit"] #edit,
+body[data-view="loading"] #loading{display:flex}
+
+/* centered panels */
+.panel-wrap{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px}
+.panel{max-width:32rem;width:100%}
+.panel h1{font:600 clamp(30px,7vw,44px)/1.1 var(--serif);margin:0 0 12px;letter-spacing:-.01em}
+.panel p{color:var(--muted);margin:0 0 18px}
+.panel .btn{padding:12px 18px;font-size:17px}
+.steps{margin:0 0 20px;padding-left:22px}
+.steps li{margin-bottom:8px}
+.steps b{color:var(--ink)}
+.copyline{display:flex;gap:8px;align-items:center;margin:6px 0 2px}
+.copyline code{flex:1;min-width:0;overflow:auto;white-space:nowrap;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:14px var(--mono)}
+.field{display:flex;gap:8px;flex-wrap:wrap}
+.field input{flex:1 1 220px;min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:11px 12px;font:16px var(--mono)}
+.err{color:var(--danger);margin-top:14px;font-size:15px}
+
+/* headers */
+.bar{display:flex;align-items:center;gap:10px;padding-top:10px;padding-bottom:10px;border-bottom:1px solid var(--line);flex:none}
+
+/* browser */
+#crumbs{flex:1;min-width:0;display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+#crumbs::-webkit-scrollbar{display:none}
+#crumbs button{border:0;background:transparent;padding:7px 6px;border-radius:7px;cursor:pointer;color:var(--muted);font-size:16px}
+#crumbs button:last-child{color:var(--ink);font-weight:700;font-size:18px}
+#crumbs .sep{color:var(--line);padding:0 1px}
+.searchrow{display:flex;gap:8px;padding-top:8px;padding-bottom:8px;flex:none}
+.searchrow input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:9px 12px;font:16px var(--ui)}
+#list{flex:1;min-height:0;overflow-y:auto;background:var(--surface);border-top:1px solid var(--line);-webkit-overflow-scrolling:touch}
+.row{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  border:0;border-bottom:1px solid var(--line);background:transparent;cursor:pointer;
+  padding-top:12px;padding-bottom:12px;
+}
+.row:active{background:var(--bg)}
+.row .ic{flex:none;width:26px;height:26px;color:var(--accent)}
+.row .ic.file{color:var(--muted)}
+.row .txt{flex:1;min-width:0}
+.row .nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:17px}
+.row .mt{display:block;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.dim .nm{color:var(--muted)}
+.row .chev{color:var(--line);flex:none}
+.msg{padding:28px 18px;color:var(--muted);text-align:center}
+.msg .btn{margin-top:12px}
+.bfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);flex:none}
+.bfoot span{flex:1;min-width:10em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* editor */
+.name-wrap{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+#fname{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:700 18px/1.2 var(--ui);padding:6px 4px;border-radius:6px;text-overflow:ellipsis}
+#fname:hover{background:var(--surface)}
+#dirty{width:9px;height:9px;border-radius:50%;background:var(--warn);flex:none;opacity:0;transition:opacity .2s}
+body.is-dirty #dirty{opacity:1}
+#editor{
+  flex:1;min-height:0;width:100%;resize:none;border:0;margin:0;
+  background:var(--surface);color:var(--ink);
+  padding:18px max(18px, env(safe-area-inset-right,0px)) 40px max(18px, env(safe-area-inset-left,0px));
+  font-family:var(--mono);font-size:var(--fs,17px);line-height:1.6;tab-size:4;
+}
+body.serif #editor{font-family:var(--serif);line-height:1.7}
+body.nowrap #editor{white-space:pre;overflow-x:auto}
+#editor:focus-visible{outline:none}
+#findbar{display:none;flex-wrap:wrap;gap:8px;align-items:center;padding-top:8px;padding-bottom:8px;border-bottom:1px solid var(--line);flex:none}
+body.finding #findbar{display:flex}
+#findbar input{flex:1 1 140px;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 10px;font:16px var(--ui)}
+#findcount{color:var(--muted);font-size:14px;min-width:4.5em;text-align:center}
+#findbar .btn{padding:8px 12px;min-height:40px}
+.efoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none;padding-top:8px;padding-bottom:8px;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}
+#stats{flex:1;min-width:10em}
+#restore{display:none;gap:10px;align-items:center;flex-wrap:wrap;padding-top:10px;padding-bottom:10px;background:var(--surface);border-bottom:1px solid var(--line);flex:none}
+#restore.show{display:flex}
+#restore span{flex:1;min-width:12em}
+
+/* dialog */
+dialog{border:0;border-radius:16px;padding:22px;max-width:min(26rem,90vw);background:var(--surface);color:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(15,25,35,.45)}
+dialog h2{font:600 22px/1.2 var(--serif);margin:0 0 8px}
+dialog p{margin:0 0 20px;color:var(--muted)}
+dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+
+/* busy + toast */
+#busy{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:30;background:rgba(15,25,35,.25)}
+#busy.show{display:flex}
+#busy div{background:var(--surface);padding:14px 20px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+#toast{
+  position:fixed;left:50%;bottom:calc(70px + env(safe-area-inset-bottom,0px));
+  transform:translate(-50%,20px);opacity:0;pointer-events:none;
+  background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;
+  max-width:min(92vw,30rem);font-size:15px;transition:opacity .2s,transform .2s;z-index:40;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion: reduce){#toast,#dirty{transition:none}}
+@media (max-width:480px){ .hide-sm{display:none} }
+</style>
+</head>
+<body data-view="loading">
+
+<!-- Loading -->
+<section class="view" id="loading"><div class="panel-wrap"><p style="color:var(--muted)">Loading…</p></div></section>
+
+<!-- Setup -->
+<section class="view" id="setup">
+  <div class="panel-wrap"><div class="panel">
+    <h1>One-time setup</h1>
+    <p>Microsoft needs to know this app before it can open your OneDrive. Register it once, then paste the ID it gives you below.</p>
+    <ol class="steps">
+      <li>Open <a href="https://entra.microsoft.com" target="_blank" rel="noopener">entra.microsoft.com</a> and go to <b>App registrations</b>, then <b>New registration</b>.</li>
+      <li>Name it anything. Under account types, pick <b>Accounts in any organizational directory and personal Microsoft accounts</b>.</li>
+      <li>Under Redirect URI, choose <b>Single-page application (SPA)</b> and enter:
+        <div class="copyline"><code id="redir"></code><button class="btn" id="copyRedir">Copy</button></div></li>
+      <li>Tap <b>Register</b>, then copy the <b>Application (client) ID</b>.</li>
+    </ol>
+    <div class="field">
+      <input id="cidIn" placeholder="Application (client) ID" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Application (client) ID">
+      <button class="btn primary" id="cidSave">Continue</button>
+    </div>
+    <div class="err" id="cidErr"></div>
+  </div></div>
+</section>
+
+<!-- Sign in -->
+<section class="view" id="signin">
+  <div class="panel-wrap"><div class="panel">
+    <h1>Edit text files in your OneDrive.</h1>
+    <p>Sign in with your Microsoft account to browse your files. When you save, you’ll be asked before anything is replaced.</p>
+    <button class="btn primary" id="signinBtn">Sign in with Microsoft</button>
+    <div class="err" id="signinErr"></div>
+    <p style="margin-top:28px;font-size:14px"><a href="#" id="resetCid">Use a different app ID</a></p>
+  </div></div>
+</section>
+
+<!-- Browse -->
+<section class="view" id="browse">
+  <div class="bar pad-x">
+    <nav id="crumbs" aria-label="Folder path"></nav>
+    <button class="btn" id="backToDoc" hidden>Back to file</button>
+  </div>
+  <form class="searchrow pad-x" id="searchForm" role="search">
+    <input id="searchIn" type="search" placeholder="Search OneDrive" aria-label="Search OneDrive" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <button class="btn" type="button" id="newFileBtn">New file</button>
+  </form>
+  <div id="list" role="list"></div>
+  <div class="bfoot pad-x">
+    <span id="who"></span>
+    <button class="tool" id="signoutBtn">Sign out</button>
+  </div>
+</section>
+
+<!-- Edit -->
+<section class="view" id="edit">
+  <div class="bar pad-x">
+    <button class="btn" id="filesBtn" aria-label="Browse files">Files</button>
+    <div class="name-wrap">
+      <input id="fname" type="text" placeholder="untitled.txt" aria-label="File name" spellcheck="false" autocomplete="off" autocapitalize="off">
+      <span id="dirty" title="Unsaved changes" aria-hidden="true"></span>
+    </div>
+    <button class="btn primary" id="saveBtn">Save</button>
+  </div>
+  <div id="restore" class="pad-x" role="status">
+    <span id="restoreText">You have an unsaved draft.</span>
+    <button class="btn" id="restoreYes">Restore draft</button>
+    <button class="btn" id="restoreNo">Discard</button>
+  </div>
+  <div id="findbar" class="pad-x">
+    <input id="findIn" type="search" placeholder="Find" aria-label="Find" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <input id="replIn" type="text" placeholder="Replace with" aria-label="Replace with" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <span id="findcount" aria-live="polite"></span>
+    <button class="btn" id="findPrev" aria-label="Previous match">Prev</button>
+    <button class="btn" id="findNext" aria-label="Next match">Next</button>
+    <button class="btn" id="replOne">Replace</button>
+    <button class="btn" id="replAll">All</button>
+    <button class="btn" id="findClose">Done</button>
+  </div>
+  <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="File contents"></textarea>
+  <div class="efoot pad-x">
+    <span id="stats"></span>
+    <button class="tool" id="findBtn" aria-pressed="false">Find</button>
+    <button class="tool hide-sm" id="wrapBtn" aria-pressed="true">Wrap</button>
+    <button class="tool" id="fontBtn">Serif</button>
+    <button class="tool" id="smaller" aria-label="Smaller text">A−</button>
+    <button class="tool" id="bigger" aria-label="Larger text">A+</button>
+  </div>
+</section>
+
+<dialog id="dlg">
+  <h2 id="dlgTitle"></h2>
+  <p id="dlgBody"></p>
+  <div class="acts">
+    <button class="btn" id="dlgCancel">Cancel</button>
+    <button class="btn primary" id="dlgOk">OK</button>
+  </div>
+</dialog>
+<div id="busy"><div id="busyText">Working…</div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="/msal-browser-5.25.1.min.js"></script>
+<script>
+(function(){
+  /* ===== Config ===== */
+  const BUILT_IN_CLIENT_ID = '3e94c50c-6a9e-47a5-8bd6-c283879dfc33';
+  const SCOPES = ['User.Read', 'Files.ReadWrite'];
+  const GRAPH = 'https://graph.microsoft.com/v1.0';
+  const K = { cid:'odt-client-id', draft:'odt-draft-v1', prefs:'odt-prefs-v1', folder:'odt-folder-v1' };
+  const TEXT_EXT = 'txt md markdown csv tsv json log xml yaml yml ini cfg conf toml html htm css js mjs ts jsx tsx py rb sh bash zsh sql srt vtt tex rtf env gitignore bat ps1 php java c h cpp swift kt go rs lua r m pl'.split(' ');
+
+  const $ = id => document.getElementById(id);
+  const ed = $('editor'), fname = $('fname');
+  const store = (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
+  const load  = k => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e){ return null; } };
+  const drop  = k => { try { localStorage.removeItem(k); } catch(e){} };
+  const show  = v => { document.body.dataset.view = v; };
+
+  /* ===== UI helpers ===== */
+  let toastTimer;
+  function toast(msg, ms){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'), ms||3200); }
+  function busy(on, text){ $('busyText').textContent = text || 'Working…'; $('busy').classList.toggle('show', !!on); }
+  function ask(title, body, okLabel, opts){
+    opts = opts || {};
+    return new Promise(resolve => {
+      const d = $('dlg');
+      $('dlgTitle').textContent = title; $('dlgBody').textContent = body;
+      const ok = $('dlgOk'); ok.textContent = okLabel || 'OK';
+      ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
+      $('dlgCancel').textContent = opts.cancelLabel || 'Cancel';
+      const done = v => { d.close(); ok.onclick = null; $('dlgCancel').onclick = null; d.oncancel = null; resolve(v); };
+      ok.onclick = () => done(true);
+      $('dlgCancel').onclick = () => done(false);
+      d.oncancel = e => { e.preventDefault(); done(false); };
+      if (typeof d.showModal === 'function') d.showModal(); else resolve(confirm(title + '\n\n' + body));
+    });
+  }
+  const fmtSize = b => b == null ? '' : b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(b<10240?1:0) + ' KB' : (b/1048576).toFixed(1) + ' MB';
+  const fmtDate = s => { if (!s) return ''; const d = new Date(s); const now = new Date();
+    return d.toLocaleDateString([], d.getFullYear() === now.getFullYear() ? {month:'short', day:'numeric'} : {month:'short', day:'numeric', year:'numeric'}); };
+  const extOf = n => { const m = /\.([^.\/]+)$/.exec(n || ''); return m ? m[1].toLowerCase() : ''; };
+
+  /* ===== Auth ===== */
+  let pca = null, account = null;
+  const clientId = () => BUILT_IN_CLIENT_ID || load(K.cid) || '';
+  const redirectUri = location.origin + '/';
+  $('redir').textContent = redirectUri;
+  $('copyRedir').onclick = async () => { try { await navigator.clipboard.writeText(redirectUri); toast('Copied.'); } catch(e){ toast('Select the address and copy it.'); } };
+  $('cidSave').onclick = () => {
+    const v = $('cidIn').value.trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) { $('cidErr').textContent = 'That doesn’t look like a client ID. It’s 36 characters, like 1a2b3c4d-1234-…'; return; }
+    store(K.cid, v); location.reload();
+  };
+  $('resetCid').onclick = e => { e.preventDefault(); drop(K.cid); location.reload(); };
+
+  async function initAuth(){
+    if (typeof msal === 'undefined') throw new Error('The sign-in library didn’t load. Check your connection and reload.');
+    pca = new msal.PublicClientApplication({
+      auth: { clientId: clientId(), authority: 'https://login.microsoftonline.com/common', redirectUri, postLogoutRedirectUri: redirectUri },
+      cache: { cacheLocation: 'localStorage' }
+    });
+    await pca.initialize();
+    const res = await pca.handleRedirectPromise();
+    if (res && res.account) pca.setActiveAccount(res.account);
+    account = pca.getActiveAccount() || pca.getAllAccounts()[0] || null;
+    if (account) pca.setActiveAccount(account);
+  }
+  async function getToken(){
+    try {
+      const r = await pca.acquireTokenSilent({ scopes: SCOPES, account });
+      return r.accessToken;
+    } catch (e) {
+      const code = (e && (e.errorCode || e.name)) || '';
+      if (e instanceof msal.InteractionRequiredAuthError || /interaction|login_required|consent|no_tokens|no_account/i.test(code)) {
+        stashDraft();
+        await pca.acquireTokenRedirect({ scopes: SCOPES, account });
+        return new Promise(() => {}); // page navigates away
+      }
+      throw e;
+    }
+  }
+  $('signinBtn').onclick = async () => {
+    $('signinErr').textContent = '';
+    try { await pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' }); }
+    catch (e) { $('signinErr').textContent = 'Couldn’t start sign-in: ' + (e.errorMessage || e.message || e); }
+  };
+  $('signoutBtn').onclick = async () => {
+    if (doc.dirty && !(await ask('Sign out?', 'You have unsaved changes. They’ll stay on this device as a draft.', 'Sign out'))) return;
+    stashDraft();
+    try { await pca.clearCache({ account }); } catch(e){}
+    account = null; show('signin');
+  };
+
+  /* ===== Graph ===== */
+  async function g(path, opts){
+    opts = opts || {};
+    const t = await getToken();
+    return fetch(path.startsWith('http') ? path : GRAPH + path, Object.assign({}, opts, {
+      headers: Object.assign({ Authorization: 'Bearer ' + t }, opts.headers || {})
+    }));
+  }
+  async function gErr(r){
+    let m = 'OneDrive returned an error (' + r.status + ').';
+    try { const j = await r.json(); if (j.error && j.error.message) m = j.error.message; } catch(e){}
+    const err = new Error(m); err.status = r.status; return err;
+  }
+  async function gJson(path){ const r = await g(path); if (!r.ok) throw await gErr(r); return r.json(); }
+
+  /* ===== Browser ===== */
+  let crumbs = load(K.folder) || [{ id:'root', name:'OneDrive' }];
+  let searching = false;
+  const ICON_FOLDER = '<svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z"/></svg>';
+  const ICON_FILE = '<svg class="ic file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 15.5h6M9 9h3"/></svg>';
+  const curFolder = () => crumbs[crumbs.length - 1];
+
+  function renderCrumbs(){
+    const c = $('crumbs'); c.innerHTML = '';
+    if (searching) { const b = document.createElement('button'); b.textContent = '‹ ' + curFolder().name; b.onclick = () => { $('searchIn').value=''; searching=false; openFolder(); }; c.appendChild(b);
+      const s = document.createElement('button'); s.textContent = 'Search results'; s.disabled = true; c.appendChild(s); return; }
+    crumbs.forEach((cr, i) => {
+      if (i) { const s = document.createElement('span'); s.className='sep'; s.textContent='/'; c.appendChild(s); }
+      const b = document.createElement('button'); b.textContent = cr.name;
+      b.onclick = () => { crumbs = crumbs.slice(0, i + 1); openFolder(); };
+      c.appendChild(b);
+    });
+    c.scrollLeft = c.scrollWidth;
+  }
+  function listMsg(text, retry){
+    const l = $('list'); l.innerHTML = '';
+    const m = document.createElement('div'); m.className = 'msg'; m.textContent = text;
+    if (retry) { const b = document.createElement('button'); b.className='btn'; b.textContent='Try again'; b.onclick = retry; m.appendChild(document.createElement('br')); m.appendChild(b); }
+    l.appendChild(m);
+  }
+  function renderItems(items, withPath){
+    const l = $('list'); l.innerHTML = '';
+    if (!items.length) { listMsg(searching ? 'No matches.' : 'This folder is empty. Tap New file to start one here.'); return; }
+    items.sort((a,b) => (!!b.folder - !!a.folder) || a.name.localeCompare(b.name, undefined, { numeric:true, sensitivity:'base' }));
+    const frag = document.createDocumentFragment();
+    items.forEach(it => {
+      const row = document.createElement('button'); row.className = 'row pad-x'; row.setAttribute('role','listitem');
+      const isText = !it.folder && TEXT_EXT.indexOf(extOf(it.name)) !== -1;
+      if (!it.folder && !isText) row.classList.add('dim');
+      let meta = it.folder ? (it.folder.childCount === 1 ? '1 item' : (it.folder.childCount || 0) + ' items') : [fmtDate(it.lastModifiedDateTime), fmtSize(it.size)].filter(Boolean).join(', ');
+      if (withPath && it.parentReference && it.parentReference.path) {
+        const p = decodeURIComponent(it.parentReference.path.replace(/^\/drive(s\/[^/]+)?\/root:?/, '')) || '/';
+        meta = 'In ' + (p === '/' ? 'OneDrive' : p.replace(/^\//,'')) + (meta ? ', ' + meta : '');
+      }
+      row.innerHTML = (it.folder ? ICON_FOLDER : ICON_FILE) + '<span class="txt"><span class="nm"></span><span class="mt"></span></span>' + (it.folder ? '<span class="chev" aria-hidden="true">›</span>' : '');
+      row.querySelector('.nm').textContent = it.name;
+      row.querySelector('.mt').textContent = meta;
+      row.onclick = () => {
+        if (it.folder) {
+          if (searching) { searching = false; $('searchIn').value = ''; crumbs = [{ id:'root', name:'OneDrive' }, { id: it.id, name: it.name }]; }
+          else crumbs.push({ id: it.id, name: it.name });
+          openFolder();
+        } else openFile(it, isText);
+      };
+      frag.appendChild(row);
+    });
+    l.appendChild(frag);
+  }
+  let folderReq = 0;
+  async function openFolder(){
+    store(K.folder, crumbs); renderCrumbs();
+    const req = ++folderReq; listMsg('Loading…');
+    const f = curFolder();
+    try {
+      let url = (f.id === 'root' ? '/me/drive/root/children' : '/me/drive/items/' + encodeURIComponent(f.id) + '/children') + '?$top=200&$select=id,name,size,folder,file,lastModifiedDateTime,parentReference';
+      let items = [];
+      while (url && items.length < 3000) {
+        const j = await gJson(url); items = items.concat(j.value || []); url = j['@odata.nextLink'] || null;
+      }
+      if (req === folderReq) renderItems(items, false);
+    } catch (e) {
+      if (req !== folderReq) return;
+      if (e.status === 404 && crumbs.length > 1) { crumbs = [{ id:'root', name:'OneDrive' }]; return openFolder(); }
+      listMsg('Couldn’t load this folder. ' + (e.message || ''), openFolder);
+    }
+  }
+  $('searchForm').onsubmit = async e => {
+    e.preventDefault();
+    const q = $('searchIn').value.trim();
+    if (!q) { searching = false; return openFolder(); }
+    searching = true; renderCrumbs(); const req = ++folderReq; listMsg('Searching…');
+    try {
+      const j = await gJson("/me/drive/root/search(q='" + encodeURIComponent(q.replace(/'/g, "''")) + "')?$top=100&$select=id,name,size,folder,file,lastModifiedDateTime,parentReference");
+      if (req === folderReq) renderItems(j.value || [], true);
+    } catch (err) { if (req === folderReq) listMsg('Search didn’t work. ' + (err.message || ''), () => $('searchForm').requestSubmit()); }
+  };
+  $('searchIn').addEventListener('search', () => { if (!$('searchIn').value) { searching = false; openFolder(); } });
+  $('newFileBtn').onclick = async () => {
+    if (doc.dirty && !(await ask('Start a new file?', 'Your unsaved changes to “' + doc.name + '” will be lost.', 'Discard changes', { danger:true }))) return;
+    const parent = searching ? { id:'root', name:'OneDrive' } : curFolder();
+    setDoc({ id:null, name:'untitled.txt', eTag:null, parentId: parent.id, parentName: parent.name, text:'', eol:'\n', bom:false });
+    show('edit'); fname.focus(); fname.select();
+  };
+  $('backToDoc').onclick = () => show('edit');
+  $('filesBtn').onclick = () => { $('backToDoc').hidden = !doc.open; show('browse'); if (!$('list').children.length) openFolder(); };
+
+  /* ===== Document ===== */
+  const doc = { open:false, id:null, name:'', eTag:null, parentId:'root', parentName:'OneDrive', eol:'\n', bom:false, dirty:false, savedText:'', savedName:'' };
+
+  function setDoc(d, dirty){
+    Object.assign(doc, { open:true, id:d.id, name:d.name, eTag:d.eTag, parentId:d.parentId || 'root', parentName:d.parentName || '', eol:d.eol || '\n', bom:!!d.bom });
+    ed.value = d.text; fname.value = d.name;
+    doc.savedText = dirty ? null : d.text; doc.savedName = d.id ? d.name : null;
+    setDirty(!!dirty); updateStats(); ed.scrollTop = 0; ed.setSelectionRange(0,0);
+  }
+  function setDirty(v){ doc.dirty = v; document.body.classList.toggle('is-dirty', v); }
+  function recomputeDirty(){ setDirty(doc.savedText === null || ed.value !== doc.savedText || fname.value.trim() !== doc.savedName); }
+  function updateStats(){
+    const v = ed.value, lines = v.length ? v.split('\n').length : 0, words = (v.match(/\S+/g) || []).length;
+    let s = lines.toLocaleString() + (lines === 1 ? ' line, ' : ' lines, ') + words.toLocaleString() + (words === 1 ? ' word' : ' words');
+    if (doc.eol === '\r\n') s += ', Windows line endings';
+    $('stats').textContent = s;
+  }
+  function stashDraft(){
+    if (doc.open && doc.dirty) store(K.draft, { id:doc.id, name:fname.value, origName:doc.name, eTag:doc.eTag, parentId:doc.parentId, parentName:doc.parentName, text:ed.value, eol:doc.eol, bom:doc.bom, at:Date.now() });
+  }
+  let draftTimer;
+  const stashSoon = () => { clearTimeout(draftTimer); draftTimer = setTimeout(stashDraft, 600); };
+  ed.addEventListener('input', () => { recomputeDirty(); updateStats(); stashSoon(); if (document.body.classList.contains('finding')) countMatches(); });
+  fname.addEventListener('input', () => { recomputeDirty(); stashSoon(); });
+  ed.addEventListener('keydown', e => {
+    if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); ed.setRangeText('\t', ed.selectionStart, ed.selectionEnd, 'end'); ed.dispatchEvent(new Event('input')); }
+  });
+
+  async function openFile(it, isText){
+    if (doc.open && doc.dirty && !(await ask('Open another file?', 'Your unsaved changes to “' + fname.value + '” will be lost.', 'Discard changes', { danger:true }))) return;
+    if (!isText && !(await ask('Open “' + it.name + '”?', 'This may not be a plain-text file. Word, PDF and image files will show as gibberish, and saving would damage them.', 'Open anyway'))) return;
+    if (it.size > 5 * 1048576 && !(await ask('Large file', '“' + it.name + '” is ' + fmtSize(it.size) + '. It may be slow to edit on this device.', 'Open'))) return;
+    busy(true, 'Opening…');
+    try {
+      const meta = await gJson('/me/drive/items/' + encodeURIComponent(it.id));
+      let buf;
+      try {
+        const r = await fetch(meta['@microsoft.graph.downloadUrl']);
+        if (!r.ok) throw new Error();
+        buf = new Uint8Array(await r.arrayBuffer());
+      } catch (e) {
+        const r = await g('/me/drive/items/' + encodeURIComponent(it.id) + '/content');
+        if (!r.ok) throw await gErr(r);
+        buf = new Uint8Array(await r.arrayBuffer());
+      }
+      const bom = buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF;
+      let text = new TextDecoder('utf-8').decode(bom ? buf.subarray(3) : buf);
+      const eol = text.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
+      text = text.replace(/\r\n?/g, '\n');
+      const parent = meta.parentReference || {};
+      setDoc({ id: meta.id, name: meta.name, eTag: meta.eTag, parentId: parent.id || curFolder().id, parentName: parent.name || curFolder().name, text, eol, bom });
+      drop(K.draft); $('restore').classList.remove('show');
+      show('edit');
+    } catch (e) {
+      toast('Couldn’t open that file. ' + (e.message || ''), 5000);
+    } finally { busy(false); }
+  }
+
+  /* ===== Saving ===== */
+  function contentBytes(){
+    let out = ed.value;
+    if (doc.eol === '\r\n') out = out.replace(/\n/g, '\r\n');
+    if (doc.bom) out = '﻿' + out;
+    return new TextEncoder().encode(out);
+  }
+  async function put(url, body, ifMatch){
+    const headers = { 'Content-Type': 'text/plain' };
+    if (ifMatch) headers['If-Match'] = ifMatch;
+    return g(url, { method:'PUT', headers, body });
+  }
+  function afterSave(item, msg){
+    doc.id = item.id; doc.name = item.name; doc.eTag = item.eTag;
+    if (item.parentReference) { doc.parentId = item.parentReference.id || doc.parentId; doc.parentName = item.parentReference.name || doc.parentName; }
+    fname.value = item.name; doc.savedText = ed.value; doc.savedName = item.name;
+    setDirty(false); drop(K.draft); toast(msg);
+    $('list').innerHTML = ''; // list reloads next time it opens
+  }
+  let saving = false;
+  async function save(){
+    if (!doc.open || saving) return;
+    let name = fname.value.trim();
+    if (!name) { name = 'untitled.txt'; }
+    if (!extOf(name)) name += '.txt';
+    if (/[\\/:*?"<>|]/.test(name)) { toast('File names can’t contain \\ / : * ? " < > |', 4500); return; }
+    fname.value = name;
+    saving = true; $('saveBtn').disabled = true;
+    try {
+      const body = contentBytes();
+      if (doc.id && name === doc.name) {
+        // Overwrite the file that was opened
+        if (!(await ask('Replace “' + name + '”?', 'This overwrites the file in OneDrive with your edits. OneDrive keeps the earlier version in its version history.', 'Replace'))) return;
+        busy(true, 'Saving…');
+        const url = '/me/drive/items/' + encodeURIComponent(doc.id) + '/content';
+        let r = await put(url, body, doc.eTag);
+        if (r.status === 412) {
+          busy(false);
+          if (!(await ask('Changed in OneDrive', '“' + name + '” was changed somewhere else after you opened it. Replace it with your version anyway?', 'Replace anyway', { danger:true }))) return;
+          busy(true, 'Saving…');
+          r = await put(url, body);
+        }
+        if (r.status === 404) {
+          busy(false);
+          if (!(await ask('File not found', '“' + name + '” is no longer in OneDrive. It may have been moved or deleted. Save it as a new file in ' + (doc.parentName || 'its folder') + '?', 'Save as new'))) return;
+          doc.id = null; busy(false); saving = false; return await save();
+        }
+        if (!r.ok) throw await gErr(r);
+        afterSave(await r.json(), 'Saved. “' + name + '” was replaced in OneDrive.');
+      } else {
+        // New file, or the name was changed: create in the same folder
+        const base = doc.parentId === 'root' ? '/me/drive/root' : '/me/drive/items/' + encodeURIComponent(doc.parentId);
+        const url = base + ':/' + encodeURIComponent(name) + ':/content';
+        busy(true, 'Saving…');
+        let r = await put(url + '?@microsoft.graph.conflictBehavior=fail', body);
+        if (r.status === 409) {
+          busy(false);
+          if (!(await ask('Replace “' + name + '”?', 'A file with this name already exists in ' + (doc.parentName || 'this folder') + '. Replacing it overwrites that file. OneDrive keeps its earlier version in version history.', 'Replace'))) return;
+          busy(true, 'Saving…');
+          r = await put(url + '?@microsoft.graph.conflictBehavior=replace', body);
+        }
+        if (!r.ok) throw await gErr(r);
+        const wasRename = !!doc.id;
+        afterSave(await r.json(), wasRename ? 'Saved as “' + name + '”. The original file is unchanged.' : 'Saved “' + name + '” to OneDrive.');
+      }
+    } catch (e) {
+      toast('Didn’t save. ' + (e.message || 'Check your connection and try again.') + ' Your edits are still here.', 6000);
+    } finally {
+      busy(false); saving = false; $('saveBtn').disabled = false;
+    }
+  }
+  $('saveBtn').onclick = save;
+
+  /* ===== Preferences ===== */
+  const prefs = Object.assign({ fs:17, serif:false, wrap:true }, load(K.prefs) || {});
+  function applyPrefs(){
+    document.documentElement.style.setProperty('--fs', prefs.fs + 'px');
+    document.body.classList.toggle('serif', prefs.serif);
+    document.body.classList.toggle('nowrap', !prefs.wrap);
+    $('fontBtn').textContent = prefs.serif ? 'Mono' : 'Serif';
+    $('wrapBtn').setAttribute('aria-pressed', String(prefs.wrap));
+    store(K.prefs, prefs);
+  }
+  applyPrefs();
+  $('smaller').onclick = () => { prefs.fs = Math.max(13, prefs.fs - 1); applyPrefs(); };
+  $('bigger').onclick  = () => { prefs.fs = Math.min(30, prefs.fs + 1); applyPrefs(); };
+  $('fontBtn').onclick = () => { prefs.serif = !prefs.serif; applyPrefs(); };
+  $('wrapBtn').onclick = () => { prefs.wrap = !prefs.wrap; applyPrefs(); };
+
+  /* ===== Find & replace ===== */
+  let matches = [], mIdx = -1;
+  function countMatches(){
+    const q = $('findIn').value; matches = [];
+    if (q) { const hay = ed.value.toLowerCase(), n = q.toLowerCase(); let i = hay.indexOf(n); while (i !== -1) { matches.push(i); i = hay.indexOf(n, i + n.length); } }
+    if (mIdx >= matches.length) mIdx = matches.length - 1;
+    $('findcount').textContent = q ? (matches.length ? (mIdx >= 0 ? (mIdx + 1) + ' of ' : '') + matches.length : 'None') : '';
+  }
+  function selectMatch(i){
+    if (!matches.length) return;
+    mIdx = (i + matches.length) % matches.length;
+    const s = matches[mIdx], len = $('findIn').value.length;
+    ed.focus({ preventScroll:true }); ed.setSelectionRange(s, s + len);
+    const before = ed.value.slice(0, s).split('\n').length - 1;
+    const lh = parseFloat(getComputedStyle(ed).lineHeight) || 24;
+    ed.scrollTop = Math.max(0, before * lh - ed.clientHeight / 3);
+    countMatches();
+  }
+  function openFind(){ document.body.classList.add('finding'); $('findBtn').setAttribute('aria-pressed','true');
+    const sel = ed.value.slice(ed.selectionStart, ed.selectionEnd); if (sel && sel.indexOf('\n') === -1) $('findIn').value = sel;
+    $('findIn').focus(); $('findIn').select(); countMatches(); }
+  function closeFind(){ document.body.classList.remove('finding'); $('findBtn').setAttribute('aria-pressed','false'); }
+  $('findBtn').onclick = () => document.body.classList.contains('finding') ? closeFind() : openFind();
+  $('findClose').onclick = closeFind;
+  $('findIn').addEventListener('input', () => { mIdx = -1; countMatches(); });
+  $('findIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); selectMatch(e.shiftKey ? mIdx - 1 : mIdx + 1); } if (e.key === 'Escape') closeFind(); });
+  $('findNext').onclick = () => selectMatch(mIdx + 1);
+  $('findPrev').onclick = () => selectMatch(mIdx - 1);
+  $('replOne').onclick = () => {
+    const q = $('findIn').value; if (!q) return;
+    if (mIdx < 0 || ed.value.slice(ed.selectionStart, ed.selectionEnd).toLowerCase() !== q.toLowerCase()) { selectMatch(mIdx + 1); return; }
+    ed.setRangeText($('replIn').value, ed.selectionStart, ed.selectionEnd, 'end'); ed.dispatchEvent(new Event('input'));
+    countMatches(); selectMatch(mIdx);
+  };
+  $('replAll').onclick = () => {
+    const q = $('findIn').value; if (!q) return;
+    countMatches(); const n = matches.length; if (!n) return;
+    const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), rep = $('replIn').value;
+    const next = ed.value.replace(new RegExp(esc, 'gi'), () => rep);
+    ed.focus({ preventScroll:true }); ed.select();
+    if (!document.execCommand || !document.execCommand('insertText', false, next)) ed.value = next;
+    ed.setSelectionRange(0, 0); ed.dispatchEvent(new Event('input')); mIdx = -1; countMatches();
+    toast('Replaced ' + n.toLocaleString() + (n === 1 ? ' match.' : ' matches.'));
+  };
+
+  /* ===== Shortcuts & leave guard ===== */
+  document.addEventListener('keydown', e => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === 's' && document.body.dataset.view === 'edit') { e.preventDefault(); save(); }
+    else if (k === 'f' && document.body.dataset.view === 'edit') { e.preventDefault(); openFind(); }
+  });
+  window.addEventListener('beforeunload', e => { if (doc.dirty) { stashDraft(); e.preventDefault(); e.returnValue = ''; } });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stashDraft(); });
+
+  /* ===== Draft restore ===== */
+  function offerDraft(){
+    const d = load(K.draft);
+    if (!d || typeof d.text !== 'string') return false;
+    const when = d.at ? new Date(d.at).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+    $('restoreText').textContent = 'Unsaved changes to “' + (d.name || 'untitled.txt') + '”' + (when ? ' from ' + when : '') + '.';
+    $('restore').classList.add('show');
+    $('restoreYes').onclick = () => {
+      setDoc({ id:d.id, name:d.id ? (d.origName || d.name) : d.name, eTag:d.eTag, parentId:d.parentId, parentName:d.parentName, text:d.text, eol:d.eol, bom:d.bom }, true);
+      fname.value = d.name; doc.savedName = d.id ? doc.name : null; recomputeDirty();
+      $('restore').classList.remove('show');
+    };
+    $('restoreNo').onclick = () => { drop(K.draft); $('restore').classList.remove('show'); if (!doc.open) { show('browse'); openFolder(); } };
+    return true;
+  }
+
+  /* ===== Start ===== */
+  (async function start(){
+    if (!clientId()) { show('setup'); return; }
+    try { await initAuth(); }
+    catch (e) {
+      show('signin');
+      $('signinErr').textContent = 'Sign-in failed: ' + (e.errorMessage || e.message || e);
+      return;
+    }
+    if (!account) { show('signin'); return; }
+    $('who').textContent = 'Signed in as ' + (account.username || account.name || 'your account');
+    if (load(K.draft)) {
+      show('edit'); offerDraft();
+      setDoc({ id:null, name:'', text:'', parentId: curFolder().id, parentName: curFolder().name }); doc.open = false;
+      openFolder();
+    } else { show('browse'); openFolder(); }
+  })();
+})();
+</script>
+</body>
+</html>
