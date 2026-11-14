@@ -108,6 +108,16 @@ body[data-view="loading"] #loading{display:flex}
 .row .mt{display:block;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row.dim .nm{color:var(--muted)}
 .row .chev{color:var(--line);flex:none}
+.item{display:flex;align-items:stretch;border-bottom:1px solid var(--line)}
+.item .row{border-bottom:0;flex:1;min-width:0;padding-right:4px}
+.more{flex:none;border:0;background:transparent;width:52px;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;border-radius:8px}
+.more:active{background:var(--bg)}
+#sheet,#namedlg{width:min(22rem,86vw)}
+#sheet h2{overflow-wrap:anywhere}
+.sheet-acts{display:flex;flex-direction:column;gap:10px}
+.sheet-acts .btn{width:100%;padding:12px;font-size:17px}
+#nameIn{width:100%;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);padding:11px 12px;font:16px var(--ui);margin:0 0 6px}
+#nameErr{color:var(--danger);font-size:14px;min-height:1.3em;margin:0 0 12px}
 .msg{padding:28px 18px;color:var(--muted);text-align:center}
 .msg .btn{margin-top:12px}
 .bfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);flex:none}
@@ -224,6 +234,7 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
       <span id="dirty" title="Unsaved changes" aria-hidden="true"></span>
     </div>
     <button class="btn primary" id="saveBtn">Save</button>
+    <button class="more" id="docMore" aria-label="Rename or delete this file">⋯</button>
   </div>
   <div id="restore" class="pad-x" role="status">
     <span id="restoreText">You have an unsaved draft.</span>
@@ -258,6 +269,26 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
     <button class="btn" id="dlgCancel">Cancel</button>
     <button class="btn primary" id="dlgOk">OK</button>
   </div>
+</dialog>
+<dialog id="sheet">
+  <h2 id="sheetTitle"></h2>
+  <p id="sheetBody"></p>
+  <div class="sheet-acts">
+    <button class="btn" id="sheetRename">Rename</button>
+    <button class="btn danger" id="sheetDelete">Delete</button>
+    <button class="btn" id="sheetCancel">Cancel</button>
+  </div>
+</dialog>
+<dialog id="namedlg">
+  <form method="dialog" id="nameForm">
+    <h2>Rename</h2>
+    <input id="nameIn" type="text" aria-label="New name" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div id="nameErr" aria-live="polite"></div>
+    <div class="acts">
+      <button class="btn" type="button" id="nameCancel">Cancel</button>
+      <button class="btn primary" type="submit" id="nameOk">Rename</button>
+    </div>
+  </form>
 </dialog>
 <div id="busy"><div id="busyText">Working…</div></div>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -413,7 +444,8 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
     sortItems(items);
     const frag = document.createDocumentFragment();
     items.forEach(it => {
-      const row = document.createElement('button'); row.className = 'row pad-x'; row.setAttribute('role','listitem');
+      const wrap = document.createElement('div'); wrap.className = 'item'; wrap.setAttribute('role','listitem');
+      const row = document.createElement('button'); row.className = 'row pad-x'; wrap.appendChild(row);
       const isText = !it.folder && TEXT_EXT.indexOf(extOf(it.name)) !== -1;
       if (!it.folder && !isText) row.classList.add('dim');
       let meta = it.folder ? (it.folder.childCount === 1 ? '1 item' : (it.folder.childCount || 0) + ' items') : [fmtDate(it.lastModifiedDateTime), fmtSize(it.size)].filter(Boolean).join(', ');
@@ -431,7 +463,13 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
           openFolder();
         } else openFile(it, isText);
       };
-      frag.appendChild(row);
+      if (!it.folder) {
+        const more = document.createElement('button'); more.className = 'more'; more.textContent = '⋯';
+        more.setAttribute('aria-label', 'Rename or delete ' + it.name);
+        more.onclick = () => fileActions(it);
+        wrap.appendChild(more);
+      }
+      frag.appendChild(wrap);
     });
     l.appendChild(frag);
   }
@@ -603,6 +641,110 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
     }
   }
   $('saveBtn').onclick = save;
+
+
+  /* ===== Rename & delete ===== */
+  function chooseAction(it){
+    return new Promise(resolve => {
+      const d = $('sheet');
+      $('sheetTitle').textContent = it.name;
+      $('sheetBody').textContent = [fmtDate(it.lastModifiedDateTime), fmtSize(it.size)].filter(Boolean).join(', ');
+      const done = v => { d.close(); d.oncancel = null; resolve(v); };
+      $('sheetRename').onclick = () => done('rename');
+      $('sheetDelete').onclick = () => done('delete');
+      $('sheetCancel').onclick = () => done(null);
+      d.oncancel = e => { e.preventDefault(); done(null); };
+      d.showModal();
+    });
+  }
+  function askName(current){
+    return new Promise(resolve => {
+      const d = $('namedlg'), inp = $('nameIn');
+      inp.value = current; $('nameErr').textContent = '';
+      const done = v => { d.close(); d.oncancel = null; $('nameForm').onsubmit = null; resolve(v); };
+      $('nameCancel').onclick = () => done(null);
+      d.oncancel = e => { e.preventDefault(); done(null); };
+      $('nameForm').onsubmit = e => {
+        e.preventDefault();
+        const v = inp.value.trim();
+        if (!v) { $('nameErr').textContent = 'Enter a name.'; return; }
+        if (/[\\/:*?"<>|]/.test(v)) { $('nameErr').textContent = 'Names can’t contain \\ / : * ? " < > |'; return; }
+        if (/[. ]$/.test(v)) { $('nameErr').textContent = 'Names can’t end with a period or space.'; return; }
+        done(v);
+      };
+      d.showModal();
+      inp.focus();
+      const dot = current.lastIndexOf('.');
+      inp.setSelectionRange(0, dot > 0 ? dot : current.length);
+    });
+  }
+  async function fileActions(it){
+    const a = await chooseAction(it);
+    if (a === 'rename') return renameItem(it);
+    if (a === 'delete') return deleteItem(it);
+  }
+  async function renameItem(it){
+    const name = await askName(it.name);
+    if (!name || name === it.name) return;
+    if (extOf(name) !== extOf(it.name) && !(await ask('Change the extension?', 'Renaming “' + it.name + '” to “' + name + '” changes its file type, which can affect which apps open it.', 'Rename'))) return;
+    busy(true, 'Renaming…');
+    try {
+      const url = '/me/drive/items/' + encodeURIComponent(it.id);
+      const patch = behavior => g(url, { method:'PATCH', headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ name, '@microsoft.graph.conflictBehavior': behavior }) });
+      let r = await patch('fail');
+      if (r.status === 409) {
+        busy(false);
+        if (!(await ask('“' + name + '” already exists', 'Another file in this folder has that name. Replace it with “' + it.name + '”? The other file goes to the OneDrive recycle bin.', 'Replace', { danger:true }))) return;
+        busy(true, 'Renaming…');
+        r = await patch('replace');
+      }
+      if (!r.ok) throw await gErr(r);
+      const upd = await r.json();
+      const oldName = it.name;
+      Object.assign(it, { name: upd.name, eTag: upd.eTag, lastModifiedDateTime: upd.lastModifiedDateTime || it.lastModifiedDateTime });
+      if (doc.id === it.id) {
+        if (fname.value.trim() === doc.name) fname.value = upd.name;
+        doc.name = upd.name; doc.savedName = upd.name; doc.eTag = upd.eTag;
+        recomputeDirty(); stashDraft();
+      }
+      lastItems = lastItems
+        .filter(x => x.id === it.id || x.name.toLowerCase() !== upd.name.toLowerCase())
+        .map(x => x.id === it.id ? Object.assign(x, { name: upd.name, eTag: upd.eTag }) : x);
+      if (document.body.dataset.view === 'browse' && $('list').querySelector('.item')) renderItems(lastItems, lastWithPath);
+      toast('Renamed “' + oldName + '” to “' + upd.name + '”.');
+    } catch (e) {
+      toast('Couldn’t rename. ' + (e.message || ''), 5000);
+    } finally { busy(false); }
+  }
+  async function deleteItem(it){
+    const isOpen = doc.id === it.id;
+    const body = 'It goes to the OneDrive recycle bin, where you can restore it for a while.' + (isOpen && doc.dirty ? ' Your unsaved edits to it will be lost.' : '');
+    if (!(await ask('Delete “' + it.name + '”?', body, 'Delete', { danger:true }))) return;
+    busy(true, 'Deleting…');
+    try {
+      const r = await g('/me/drive/items/' + encodeURIComponent(it.id), { method:'DELETE' });
+      if (!r.ok && r.status !== 404) throw await gErr(r);
+      lastItems = lastItems.filter(x => x.id !== it.id);
+      if (isOpen) {
+        drop(K.draft); setDirty(false);
+        doc.open = false; doc.id = null; ed.value = ''; fname.value = '';
+        $('backToDoc').hidden = true;
+        show('browse');
+      }
+      if (document.body.dataset.view === 'browse') {
+        renderItems(lastItems, lastWithPath);
+      }
+      toast('Deleted “' + it.name + '”.');
+    } catch (e) {
+      toast('Couldn’t delete. ' + (e.message || ''), 5000);
+    } finally { busy(false); }
+  }
+  $('docMore').onclick = () => {
+    if (!doc.open) return;
+    if (!doc.id) { toast('This file isn’t in OneDrive yet. Save it first, or change its name in the title box.', 4500); return; }
+    fileActions({ id: doc.id, name: doc.name, eTag: doc.eTag, size: null, lastModifiedDateTime: null });
+  };
 
   /* ===== Preferences ===== */
   const prefs = Object.assign({ fs:17, serif:false, wrap:true, sort:'name' }, load(K.prefs) || {});
