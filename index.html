@@ -9,9 +9,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#E9EEF2" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#131A20" media="(prefers-color-scheme: dark)">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="icon" href="/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
 <title>OneDrive Text</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -261,7 +261,7 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 <div id="busy"><div id="busyText">Working…</div></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="/msal-browser-5.25.1.min.js"></script>
+<script src="msal-browser-5.25.1.min.js"></script>
 <script>
 (function(){
   /* ===== Config ===== */
@@ -305,7 +305,7 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
   /* ===== Auth ===== */
   let pca = null, account = null;
   const clientId = () => BUILT_IN_CLIENT_ID || load(K.cid) || '';
-  const redirectUri = location.origin + '/';
+  const redirectUri = location.origin + location.pathname.replace(/[^/]*$/, '');
   $('redir').textContent = redirectUri;
   $('copyRedir').onclick = async () => { try { await navigator.clipboard.writeText(redirectUri); toast('Copied.'); } catch(e){ toast('Select the address and copy it.'); } };
   $('cidSave').onclick = () => {

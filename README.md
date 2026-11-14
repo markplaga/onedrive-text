@@ -2,7 +2,7 @@
 
 A small web app for opening and editing plain-text files in OneDrive from an iPhone or iPad.
 
-Live: https://mark-onedrive-text.netlify.app
+Live: https://markplaga.github.io/onedrive-text/ (GitHub Pages; also on https://mark-onedrive-text.netlify.app)
 
 ## Why it exists
 
@@ -24,7 +24,7 @@ Saving through the iOS share sheet into OneDrive never overwrites a file; the On
 The app uses a Microsoft Entra app registration (a public single-page app, no secret):
 
 - Account types: **Accounts in any organizational directory and personal Microsoft accounts** (`signInAudience: AzureADandPersonalMicrosoftAccount`, `requestedAccessTokenVersion: 2`)
-- Redirect URI: **Single-page application**, `https://mark-onedrive-text.netlify.app/`
+- Redirect URIs: **Single-page application**, `https://markplaga.github.io/onedrive-text/` (and `https://mark-onedrive-text.netlify.app/` for the Netlify copy)
 - Delegated permissions: `User.Read`, `Files.ReadWrite`
 
 The client ID is set in `BUILT_IN_CLIENT_ID` in `index.html`. If it is left empty, the app shows a setup screen where a client ID can be pasted in instead.
@@ -35,3 +35,4 @@ The client ID is set in `BUILT_IN_CLIENT_ID` in `index.html`. If it is left empt
 - `msal-browser-5.25.1.min.js`: Microsoft's sign-in library (@azure/msal-browser), served locally
 - `manifest.webmanifest`, icons: Home Screen app metadata
 - `_headers`, `netlify.toml`: Netlify hosting config (static site, no build step)
+- `.nojekyll`: serves the files as-is on GitHub Pages
