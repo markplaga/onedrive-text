@@ -169,9 +169,21 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion: reduce){#toast,#dirty{transition:none}}
 @media (max-width:480px){ .hide-sm{display:none} }
+
+/* PWA-UPDATE-SYSTEM v2 */
+[hidden]{display:none!important}
+.update-bar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--surface);border:1.5px solid var(--accent);border-radius:10px;padding:12px 14px;font-size:15px;margin:10px max(14px, env(safe-area-inset-left,0px)) 0 max(14px, env(safe-area-inset-right,0px));flex:none}
+.update-acts{display:flex;gap:8px;flex-wrap:wrap}
+.appfoot{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding-top:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);font-size:14px;color:var(--muted);flex:none}
 </style>
 </head>
 <body data-view="loading">
+
+<!-- PWA-UPDATE-SYSTEM v2 -->
+<div class="update-bar" id="updateBar" role="status" aria-live="polite" hidden>
+  <span id="updateText">A new version of OneDrive Text is ready. Your file is saved first; unsaved edits stay as a draft on this device.</span>
+  <span class="update-acts"><button class="btn primary" id="updateNow">Update now</button><button class="btn" id="updateLater">Later</button></span>
+</div>
 
 <!-- Loading -->
 <section class="view" id="loading"><div class="panel-wrap"><p style="color:var(--muted)">Loading…</p></div></section>
@@ -292,6 +304,13 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 </dialog>
 <div id="busy"><div id="busyText">Working…</div></div>
 <div id="toast" role="status" aria-live="polite"></div>
+
+<!-- PWA-UPDATE-SYSTEM v2 -->
+<footer class="appfoot pad-x">
+  <span>OneDrive Text <b>v<span id="appVersion"></span></b></span>
+  <span id="updateStatus"></span>
+  <button class="btn" id="checkUpdates" hidden>Check for updates</button>
+</footer>
 
 <script src="msal-browser-5.25.1.min.js"></script>
 <script>
@@ -642,6 +661,24 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
   }
   $('saveBtn').onclick = save;
 
+  // PWA-UPDATE-SYSTEM v2 bridge: the update script is a separate
+  // <script> and cannot see inside this IIFE, so expose only what an
+  // update needs. save: the app's own save — it asks "Replace?"
+  // itself before overwriting the file in OneDrive, and a failed
+  // token refresh can redirect to Microsoft sign-in, so the update
+  // script never assumes it succeeded and re-checks isDirty after.
+  // stash: flush the draft to localStorage now, instead of waiting
+  // for the 600 ms debounce, so edits made moments before an update
+  // survive the reload and are offered back by the draft restore.
+  // isDirty: there are edits that have not been saved to OneDrive.
+  // The draft in localStorage (odt-draft-v1) is the safety net: the
+  // app offers it back after any reload.
+  window.__onedriveTextUpdate = {
+    save: function(){ return save(); },
+    stash: function(){ try { stashDraft(); } catch (e) {} },
+    isDirty: function(){ try { return !!doc.dirty; } catch (e) { return true; } }
+  };
+
 
   /* ===== Rename & delete ===== */
   function chooseAction(it){
@@ -857,6 +894,264 @@ dialog .acts{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
   })();
 })();
 </script>
-<script>if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {})); }</script>
+<script>
+// PWA-UPDATE-SYSTEM v2: auto-update, version banner, Check for updates. Do not remove this line.
+const APP_RELEASE='1.0.0-20261126-1';
+const APP_VERSION='1.0.0';
+(function(){
+  var LATER_KEY = 'onedrive-text-update-later-v2';
+  var BC_NAME = 'onedrive-text-update-v2';
+
+  document.getElementById('appVersion').textContent = APP_VERSION;
+  var status = document.getElementById('updateStatus'), checkBtn = document.getElementById('checkUpdates'), bar = document.getElementById('updateBar');
+  var say = function(t){ status.textContent = t; };
+  if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+  checkBtn.hidden = false;
+
+  var reg = null, userAsked = false, reloading = false, updating = false;
+  var remote = null, pendingRelease = null, checkPromise = null;
+  // Release the user has acknowledged updating with unsaved edits
+  // for (see applyUpdate). A new release needs a fresh acknowledgement.
+  var dirtyAck = null;
+  var tabId = 'tab-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+  // The app script is an IIFE: its save/draft state is only reachable
+  // through window.__onedriveTextUpdate (set up in the main script).
+  function bridge(){ return window.__onedriveTextUpdate || null; }
+  // Unsaved work: the editor holds edits that have not been saved
+  // to OneDrive. (The draft in localStorage is the safety net, not
+  // the test: isDirty reports the OneDrive state.)
+  function isDirty(){
+    try { var b = bridge(); return b ? !!b.isDirty() : true; }
+    catch (e) { return true; }
+  }
+
+  // Multi-tab coordination over BroadcastChannel.
+  var bc = null, bcWaiters = {};
+  try { if ('BroadcastChannel' in window) bc = new BroadcastChannel(BC_NAME); } catch (e) {}
+  if (bc) bc.onmessage = function(ev){
+    var d = ev.data || {};
+    if (d.type === 'update-query' && d.from !== tabId) {
+      try { bc.postMessage({ type: 'update-response', id: d.id, from: tabId, blocked: isDirty() }); } catch (e) {}
+    } else if (d.type === 'update-response' && bcWaiters[d.id]) {
+      bcWaiters[d.id].push(d);
+    }
+  };
+  function queryTabs(release){
+    return new Promise(function(resolve){
+      if (!bc) return resolve([]);
+      var id = 'q-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      var answers = [];
+      bcWaiters[id] = answers;
+      try { bc.postMessage({ type: 'update-query', id: id, from: tabId, release: release }); } catch (e) {}
+      setTimeout(function(){ delete bcWaiters[id]; resolve(answers); }, 800);
+    });
+  }
+
+  function workerVersion(worker, ms){
+    return new Promise(function(resolve){
+      if (!worker || !('MessageChannel' in window)) return resolve(null);
+      var done = false, timer = null;
+      try {
+        var ch = new MessageChannel();
+        timer = setTimeout(function(){ if (!done) { done = true; resolve(null); } }, ms);
+        ch.port1.onmessage = function(ev){
+          if (done) return; done = true; clearTimeout(timer);
+          var d = ev.data || {};
+          resolve((d.release && d.displayVersion) ? d : null);
+        };
+        worker.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+      } catch (e) { if (timer) clearTimeout(timer); resolve(null); }
+    });
+  }
+  function workerClientCount(worker){
+    return new Promise(function(resolve){
+      if (!worker || !('MessageChannel' in window)) return resolve(null);
+      var done = false, timer = null;
+      try {
+        var ch = new MessageChannel();
+        timer = setTimeout(function(){ if (!done) { done = true; resolve(null); } }, 2000);
+        ch.port1.onmessage = function(ev){
+          if (done) return; done = true; clearTimeout(timer);
+          var d = ev.data || {};
+          resolve(typeof d.count === 'number' ? d.count : null);
+        };
+        worker.postMessage({ type: 'GET_CLIENTS' }, [ch.port2]);
+      } catch (e) { if (timer) clearTimeout(timer); resolve(null); }
+    });
+  }
+  function waitControllerChange(ms){
+    return new Promise(function(resolve){
+      var done = false;
+      var timer = setTimeout(function(){ if (!done) { done = true; resolve(false); } }, ms);
+      var onChange = function(){
+        if (done) return; done = true; clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+        resolve(true);
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', onChange);
+    });
+  }
+
+  function showBar(display, release, manual){
+    if (release) pendingRelease = release;
+    var later = null;
+    try { later = sessionStorage.getItem(LATER_KEY); } catch (e) {}
+    document.getElementById('updateText').textContent = 'OneDrive Text ' + (display ? 'v' + display + ' ' : '') + 'is ready. Your file is saved first; unsaved edits stay as a draft on this device.';
+    if (later && release && later === release && !manual) return;
+    bar.hidden = false;
+    say('An update is ready.');
+  }
+  function fetchRemote(){
+    return fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function(r){ if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function(info){ remote = (info && typeof info.release === 'string') ? info : null; return remote; })
+      .catch(function(){ remote = null; return null; });
+  }
+  function maybeShowUpdate(manual){
+    return fetchRemote().then(function(info){
+      if (reg) return reg.update().catch(function(){}).then(function(){ return info; });
+      return info;
+    }).then(function(info){
+      var w = reg && reg.waiting;
+      if (!w || !navigator.serviceWorker.controller) {
+        if (manual) {
+          if (!info) say('Could not reach the server. Try again when you are online.');
+          else if (info.release && info.release !== APP_RELEASE) say('Version ' + info.version + ' found. Downloading\u2026');
+          else say('You have the latest version (' + APP_VERSION + ').');
+        }
+        return false;
+      }
+      return workerVersion(w, 2000).then(function(verified){
+        if (verified) {
+          if (info && info.release && verified.release !== info.release) {
+            if (manual) say('The downloaded update did not match the published release. Try again.');
+            return false;
+          }
+          showBar(verified.displayVersion, verified.release, manual);
+          if (manual) say('An update is ready.');
+          return true;
+        }
+        // Handshake failed: show the banner, but name no version.
+        showBar(null, info && info.release, manual);
+        if (manual) say('An update is ready.');
+        return true;
+      });
+    });
+  }
+  function check(manual){
+    if (checkPromise) return checkPromise;
+    if (manual) { say('Checking\u2026'); checkBtn.disabled = true; }
+    checkPromise = maybeShowUpdate(manual).catch(function(){ return false; }).then(function(ok){
+      checkPromise = null;
+      if (manual) checkBtn.disabled = false;
+      return ok;
+    });
+    return checkPromise;
+  }
+  function track(w){
+    if (!w) return;
+    w.addEventListener('statechange', function(){
+      if (w.state === 'installed') check(false);
+    });
+  }
+
+  async function applyUpdate(){
+    if (updating) return;
+    updating = true;
+    try {
+      var w = reg && reg.waiting;
+      if (!w) { say('No update is waiting. Tap Check for updates first.'); return; }
+      var expected = pendingRelease || (remote && remote.release);
+      var b = bridge();
+      if (!b) { say('Could not reach the editor to check your file. Try again.'); return; }
+      // 1. Protect this tab's unsaved work before anything moves.
+      // Flush the draft to localStorage first, so even edits made
+      // moments ago (inside the 600 ms debounce) survive the reload
+      // and are offered back by the app's draft restore. Then try
+      // the app's own save, which asks "Replace?" before overwriting
+      // the file in OneDrive. If the user cancels that, or the save
+      // fails, the draft still protects the text — but only with a
+      // second, explicit tap: the first tap warns and records the
+      // acknowledgement for this release only.
+      try { b.stash(); } catch (e) {}
+      var dirty = false;
+      try { dirty = !!b.isDirty(); } catch (e) { dirty = true; }
+      if (dirty && !(expected && dirtyAck === expected)) {
+        dirtyAck = expected;
+        try { await b.save(); } catch (e) {}
+        try { dirty = !!b.isDirty(); } catch (e) { dirty = true; }
+        if (dirty) {
+          say('Your edits were not saved to OneDrive — they are kept on this device as a draft and will be offered back after the update. Tap Update now again to update now, or save first from the editor.');
+          return;
+        }
+      }
+      // 2. Coordinate with other tabs of this app.
+      say('Checking other tabs\u2026');
+      var answers = await queryTabs(expected);
+      if (answers.some(function(a){ return a.blocked; })) {
+        say('Another OneDrive Text tab has unsaved changes — save it there first, or close that tab.');
+        return;
+      }
+      if (answers.length === 0) {
+        var count = await workerClientCount(w);
+        if (count === null || count > 1) {
+          say('Another OneDrive Text tab is open and couldn\u2019t confirm it\u2019s safe.');
+          return;
+        }
+      }
+      // 3. Activate only the specific waiting worker.
+      say('Updating\u2026');
+      userAsked = true;
+      var changed = waitControllerChange(8000);
+      w.postMessage({ type: 'SKIP_WAITING' });
+      var ok = await changed;
+      if (!ok) {
+        userAsked = false;
+        say('The update did not start. Tap Update now to try again, or Later to defer it.');
+        return;
+      }
+      // 4. Verify the new controller really is the expected release,
+      // then reload exactly once. No blind reload fallback exists.
+      var info = await workerVersion(navigator.serviceWorker.controller, 2000);
+      if (!info || (expected && info.release !== expected)) {
+        userAsked = false;
+        say('The update did not take over as expected. Tap Update now to try again, or Later to defer it.');
+        return;
+      }
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    } finally { updating = false; }
+  }
+
+  document.getElementById('updateNow').onclick = applyUpdate;
+  document.getElementById('updateLater').onclick = function(){
+    bar.hidden = true;
+    dirtyAck = null;
+    try { sessionStorage.setItem(LATER_KEY, pendingRelease || (remote && remote.release) || '?'); } catch (e) {}
+    say('Update postponed. You will be asked again next time you open the app, or tap Check for updates.');
+  };
+  checkBtn.onclick = function(){ check(true); };
+  // A controllerchange on its own (first install, or an update
+  // activated from another tab) never reloads this page: only an
+  // explicit Update now in this tab does, after verification in
+  // applyUpdate. There is deliberately no reload here.
+  window.addEventListener('load', async function(){
+    try { reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none', scope: './' }); } catch (e) { return; }
+    if (reg.waiting) check(false);
+    track(reg.installing);
+    reg.addEventListener('updatefound', function(){ track(reg.installing); });
+    check(false);
+  });
+  var last = Date.now();
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible' && Date.now() - last > 5 * 60e3) { last = Date.now(); check(false); }
+  });
+  setInterval(function(){
+    if (document.visibilityState === 'visible') { last = Date.now(); check(false); }
+  }, 60 * 60e3);
+})();
+</script>
 </body>
 </html>
